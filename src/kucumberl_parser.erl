@@ -208,7 +208,7 @@ process_stage(feature, Ctx, Info) ->
     case scope_get(Ctx) of
 	[] ->
 	    Ctx1 = scope_push(Ctx, feature),
-	    Ctx1#fparser_ctx{result = Ctx1#fparser_ctx.result#feature{desc = Info,
+	    Ctx1#fparser_ctx{result = Ctx1#fparser_ctx.result#feature{name = Info,
 								      tags = Ctx1#fparser_ctx.tags},
 			     tags = []};
 	_  ->
@@ -233,8 +233,9 @@ process_stage(scenario, Ctx, Info) ->
 	[feature|_] ->
 	    Ctx1 = scope_set(Ctx, [feature, scenario]),
 	    Scenario = #scenario{type=scenario,
-				 desc = Info,
-				 tags = Ctx1#fparser_ctx.tags
+				 name = Info,
+				 tags = Ctx1#fparser_ctx.tags,
+				 line = element(2, Ctx1)
 				},
 	    NewSceneriosList = Ctx1#fparser_ctx.result#feature.scenarios ++ [Scenario],
 	    Ctx1#fparser_ctx{result = Ctx1#fparser_ctx.result#feature{scenarios=NewSceneriosList},
@@ -345,51 +346,53 @@ process_stage(ml_text, Ctx, Info) ->
     end;
 process_stage(str, Ctx, Info) ->
     case scope_get(Ctx) of
-	[feature, Scn, S, [ml_text, T]]
-	  when S =:= given_step;
-	       S =:= when_step;
-	       S =:= then_step;
-	       S =:= and_step ->
-	    Str = case re:run(Info,
-			      "^" ++ T ++ "(?<VALUE>.*)$",
-			      [global,{capture, [1], list},unicode]) of
-		      {match,[[VALUE]]} -> VALUE;
-		      _ -> Info
-		  end,
-	    case Scn of
-		background ->
-		    Scenario = Ctx#fparser_ctx.result#feature.background,
-		    [Action|ARest] = lists:reverse(Scenario#scenario.actions),
-		    NewAction = case Action#action.text of
-				    "" -> Action#action{text = Str};
-				    _  -> Action#action{text = Action#action.text ++ "\n" ++ Str}
-				end,
-		    NewScenario = Scenario#scenario{actions = lists:reverse([NewAction] ++ ARest)},
-		    NewResult = Ctx#fparser_ctx.result#feature{background = NewScenario},
-		    Ctx#fparser_ctx{result = NewResult};
-		X when X =:= scenario;
-		       X =:= scenario_out->
-		    [Scenario|SRest] = lists:reverse(Ctx#fparser_ctx.result#feature.scenarios),
-		    [Action|ARest] = lists:reverse(Scenario#scenario.actions),
-		    NewAction = case Action#action.text of
-				    "" -> Action#action{text = Str};
-				    _  -> Action#action{text = Action#action.text ++ "\n" ++ Str}
-				end,
-		    NewScenario = Scenario#scenario{actions = lists:reverse([NewAction] ++ ARest)},
-		    NewResult = Ctx#fparser_ctx.result#feature{scenarios = lists:reverse([NewScenario] ++ SRest)},
-		    Ctx#fparser_ctx{result = NewResult}
-	    end;
-	_ ->
-	    case re:run(Info,
-			"^\s*\@(?<VALUE>.+)$",
-			[global,{capture, [1], list},unicode]) of
-		{match,[[[]]]} -> Ctx;
-		{match,[[VALUE]]} ->
-		    Tags = string:tokens(VALUE, "@\s"),
-		    Ctx#fparser_ctx{tags = Ctx#fparser_ctx.tags ++ Tags};
-		_ -> Ctx
-	    end
-    end;
+			[feature, Scn, S, [ml_text, T]]
+				when S =:= given_step;
+				S =:= when_step;
+				S =:= then_step;
+				S =:= and_step ->
+				Str = case re:run(Info,
+					"^" ++ T ++ "(?<VALUE>.*)$",
+					[global, {capture, [1], list}, unicode]) of
+								{match, [[VALUE]]} -> VALUE;
+								_ -> Info
+							end,
+				case Scn of
+					background ->
+						Scenario = Ctx#fparser_ctx.result#feature.background,
+						[Action | ARest] = lists:reverse(Scenario#scenario.actions),
+						NewAction = case Action#action.text of
+													"" -> Action#action{text = Str};
+													_ -> Action#action{text = Action#action.text ++ "\n" ++ Str}
+												end,
+						NewScenario = Scenario#scenario{actions = lists:reverse([NewAction] ++ ARest)},
+						NewResult = Ctx#fparser_ctx.result#feature{background = NewScenario},
+						Ctx#fparser_ctx{result = NewResult};
+					X when X =:= scenario;
+						X =:= scenario_out ->
+						[Scenario | SRest] = lists:reverse(Ctx#fparser_ctx.result#feature.scenarios),
+						[Action | ARest] = lists:reverse(Scenario#scenario.actions),
+						NewAction = case Action#action.text of
+													"" -> Action#action{text = Str};
+													_ -> Action#action{text = Action#action.text ++ "\n" ++ Str}
+												end,
+						NewScenario = Scenario#scenario{actions = lists:reverse([NewAction] ++ ARest)},
+						NewResult = Ctx#fparser_ctx.result#feature{scenarios = lists:reverse([NewScenario] ++ SRest)},
+						Ctx#fparser_ctx{result = NewResult}
+				end;
+			[feature] when Info =/= [] ->
+				NewResult = Ctx#fparser_ctx.result#feature{desc = Ctx#fparser_ctx.result#feature.desc ++ "\n" ++ Info},
+				Ctx#fparser_ctx{result = NewResult};
+			_ ->
+				case re:run(Info, "^\s*\@(?<VALUE>.+)$", [global, {capture, [1], list}, unicode]) of
+					{match, [[[]]]} -> Ctx;
+					{match, [[VALUE]]} ->
+						Tags = string:tokens(VALUE, "@\s"),
+						Ctx#fparser_ctx{tags = Ctx#fparser_ctx.tags ++ Tags};
+					_ -> Ctx
+
+				end
+		end;
 process_stage(_, Ctx, _Info) ->
     Ctx.
 

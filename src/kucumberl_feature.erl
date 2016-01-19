@@ -32,6 +32,7 @@ run(Feature) ->
 	true ->
 	    kucumberl_feature_code:load(Feature),
 	    kucumberl_log:init_feature(Feature),
+      kucumberl_report:log(Feature#feature{scenarios = []}),
 	    F = run_feature(Feature),
 	    kucumberl_log:end_feature(),
 	    kucumberl_feature_code:unload(F);
@@ -67,6 +68,7 @@ run_feature(Feature) ->
 	      case Scn#scenario.enabled of
 		  true ->
 		      kucumberl_log:init_scenario(ScnID),
+          kucumberl_report:log(Scn#scenario{id = ScnID, featureId = F#feature.id, actions = []}),
 		      F = kucumberl_feature_scn:run(F, ScnID),
 		      kucumberl_log:end_scenario(),
 		      F;

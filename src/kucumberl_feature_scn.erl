@@ -57,21 +57,25 @@ run_scenario_background(F, ScnID, EID) ->
 	BScn ->
 	    lists:foldl(
 	      fun(ActID, F1) ->
-		      kucumberl_feature_act:run(F1, {background, ScnID, EID, ActID})
+		      NewAct = kucumberl_feature_act:run(F1, {background, ScnID, EID, ActID}),
+          report(step, F1, background, ScnID, EID, ActID, NewAct),
+          F1
 	      end,
 	      F,
 	      lists:seq(1, length(BScn#scenario.actions)))
     end.
 
 run_scenario(F, ScnID, EID) ->
-    S = get_scenario(F, ScnID),
+  S = get_scenario(F, ScnID),
 
-    lists:foldl(
-      fun(ActID, F1) ->
-	      kucumberl_feature_act:run(F1, {normal, ScnID, EID, ActID})
-      end,
-      F,
-      lists:seq(1, length(S#scenario.actions))).
+  lists:foldl(
+    fun(ActID, F1) ->
+      NewAct = kucumberl_feature_act:run(F1, {normal, ScnID, EID, ActID}),
+      report(step, F, normal, ScnID, EID, ActID, NewAct),
+      F1
+    end,
+    F,
+    lists:seq(1, length(S#scenario.actions))).
 
 run_scenario_out(F, ScnID) ->
     Scn = get_scenario(F, ScnID),
@@ -102,4 +106,16 @@ get_scenario_type(F, ScnID) ->
     Scn = get_scenario(F, ScnID),
     Scn#scenario.type.
 
+report(step, F, Type, ScnID, EID, ActID, Act) ->
+  [[R]] = ets:match(kctx, {{F#feature.id, Type, ScnID, EID, ActID}, '$1'}),
+  NewAct = case R of
+             ok -> Act#action{status = passed};
+             {failed, _Reason} -> Act#action{status = failed, error = _Reason};
+             not_implementated -> Act#action{status = failed, error = not_implemented};
+             disabled -> Act#action{status = failed, error = disabled}
+           end,
+  kucumberl_report:log(NewAct#action{
+    featureId = F#feature.id,
+    scenarioId = ScnID
+  }).
 

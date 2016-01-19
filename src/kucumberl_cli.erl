@@ -32,7 +32,9 @@
 	       fdir = [],
 	       task = runtests,
 	       features = [],
-	       color = true
+	       color = true,
+         format = json,
+         output = none
 	      }).
 
 %%%===================================================================
@@ -56,6 +58,8 @@ main(Args) ->
 	    code:add_pathsz(Conf#conf.path_z),
 
 	    kucumberl_log:set_color(Conf#conf.color),
+
+      kucumberl_report:start_link(Conf#conf.format, Conf#conf.output),
 
 	    Result =
 		case Conf#conf.task of
@@ -101,7 +105,9 @@ option_spec_list() ->
      {rskip,       $r,        "rskip",       string,                "Skip features using regexp"},
      {path_a,      $a,        "pa",          string,                "Adds the specified directories to the beginning of the code path"},
      {path_z,      $z,        "pz",          string,                "Adds the specified directories to the end of the code path"},
-     {color,       $C,        "color",       {boolean, true},       "Use colors or not (enabled by default)"}
+     {color,       $C,        "color",       {boolean, true},       "Use colors or not (enabled by default)"},
+     {format,      $f,        "format",      string,                "Format of output (json)"},
+     {output,      $o,        "output",      string,                "Path to output file)"}
     ].
 
 
@@ -120,6 +126,8 @@ store_conf(Conf, [I|Rest]) ->
 				      true -> Conf#conf{color = true};
 				      false -> Conf#conf{color = false}
 				  end;
+  {format, F} -> NewConf = Conf#conf{format = F};
+  {output, O} -> NewConf = Conf#conf{output = O};
 	_ -> NewConf = Conf
     end,
     store_conf(NewConf, Rest);
@@ -260,6 +268,7 @@ task(runtests, Conf) ->
 	      [],
 	      Features),
 	    kucumberl_log:print_stats(),
+      kucumberl_report:save(),
 
 	    ScnFailed = length(ets:match(kctx, {{'$1', status, '$2', '$3'}, failed})),
 	    case ScnFailed of

@@ -49,14 +49,14 @@ run(F, {teardown, ScnID, EID}) ->
     F;
 run(F, {background, ScnID, EID, ActID}) ->
     kucumberl_log:emit(init_step, {background, ScnID, EID, ActID}),
-    F = run_step(F, {background, ScnID, EID, ActID}),
+		NewAct = run_step(F, {background, ScnID, EID, ActID}),
     kucumberl_log:emit(end_step, {background, ScnID, EID, ActID}),
-    F;
+		NewAct;
 run(F, {normal, ScnID, EID, ActID}) ->
     kucumberl_log:emit(init_step, {normal, ScnID, EID, ActID}),
-    F = run_step(F, {normal, ScnID, EID, ActID}),
+    NewAct = run_step(F, {normal, ScnID, EID, ActID}),
     kucumberl_log:emit(end_step, {normal, ScnID, EID, ActID}),
-    F;
+		NewAct;
 run(F,_) -> F.
 
 
@@ -85,7 +85,9 @@ run_step(F, {ScnType, ScnID, EID, ActID}) ->
 		   S
 	   end,
 
-    case find_step_handlers(F, ScnID, EID, Step, Act) of
+		NewAct = prepare_act(F, ScnID, EID, Act),
+
+    case find_step_handlers(F, ScnID, EID, Step, NewAct) of
 	[] ->
 	    %%io:format("F: ~p Scn: ~p E: ~p T: ~p Act: ~p NO HANDLERS~n", [F#feature.id, ScnID, EID, ScnType, ActID]),
 	    ets:insert(kctx, {{F#feature.id, status, ScnID, EID}, disabled}),
@@ -117,7 +119,7 @@ run_step(F, {ScnType, ScnID, EID, ActID}) ->
 	    end
     end,
 
-    F.
+    NewAct.
 
 find_step_handlers(F, ScnID, EID, Step, Act) ->
     PAct = prepare_act(F, ScnID, EID, Act),
