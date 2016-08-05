@@ -46,7 +46,7 @@
 -define(FEATURE, str("Feature")).
 
 -record(state, {
-  foramt = json,
+  format = json,
   output = none,
   report = []
 }).
@@ -64,7 +64,10 @@ log(Ref, #scenario{} = Scenario) ->
   gen_server:cast(Ref, {scenario, Scenario});
 
 log(Ref, #action{} = Step) ->
-  gen_server:cast(Ref, {step, Step}).
+  gen_server:cast(Ref, {step, Step});
+
+log(Ref, {Tags, #scenario{} = Scenario}) when is_list(Tags) ->
+  gen_server:cast(Ref, {tags, Tags, for, Scenario}).
 
 save() ->
   save(?REF).
@@ -73,13 +76,12 @@ save(Ref) ->
   gen_server:call(Ref, {save}).
 
 init([Format, Output]) ->
-  {ok, #state{foramt = Format, output = Output, report = []}}.
+  {ok, #state{format = Format, output = Output, report = []}}.
 
 handle_call({save}, _From, #state{output = none} = State) ->
   {reply, file_not_found, State};
 
-
-handle_call({save}, _From, #state{report = Report, foramt = json, output = Output} = State) ->
+handle_call({save}, _From, #state{report = Report, format = json, output = Output} = State) ->
   Features = lists:map(fun feature/1, lists:reverse(Report)),
   {ok, Json} = jsone_encode:encode(Features, [{indent, 1}, {space, 2}]),
   file:write_file(Output, io_lib:fwrite("~s\n", [Json])),
@@ -91,26 +93,41 @@ handle_cast({feature, #feature{id = Id} = Feature}, #state{report = Report} = St
 
 handle_cast({scenario, #scenario{featureId = FeatureId, id = Id} = Scenario}, #state{report = Report} = State) ->
   NewReport = case lists:keyfind(FeatureId, 2, Report) of
-               #feature{} = Feature ->
-                 lists:keyreplace(FeatureId, 2, Report, Feature#feature{
-                   scenarios = put(Id, 2, Scenario, Feature#feature.scenarios)
-                 })
-             end,
+    #feature{} = Feature ->
+      lists:keyreplace(FeatureId, 2, Report, Feature#feature{
+        scenarios = put(Id, 2, Scenario, Feature#feature.scenarios)
+      })
+  end,
   {noreply, State#state{report = NewReport}};
 
 handle_cast({step, #action{featureId = FeatureId, scenarioId = ScenarioId} = Step}, #state{report = Report} = State) ->
   NewReport = case lists:keyfind(FeatureId, 2, Report) of
-               #feature{} = Feature ->
-                 NewScenario = case lists:keyfind(ScenarioId, 4, Feature#feature.scenarios) of
-                                 #scenario{} = Scenario ->
-                                   Scenario#scenario{
-                                     actions = [Step | Scenario#scenario.actions]
-                                   }
-                               end,
-                 lists:keyreplace(FeatureId, 2, Report, Feature#feature{
-                   scenarios = lists:keyreplace(ScenarioId, 4, Feature#feature.scenarios, NewScenario)
-                 })
-             end,
+    #feature{} = Feature ->
+      NewScenario = case lists:keyfind(ScenarioId, 4, Feature#feature.scenarios) of
+        #scenario{} = Scenario ->
+          Scenario#scenario{
+            actions = [Step | Scenario#scenario.actions]
+          }
+      end,
+      lists:keyreplace(FeatureId, 2, Report, Feature#feature{
+        scenarios = lists:keyreplace(ScenarioId, 4, Feature#feature.scenarios, NewScenario)
+      })
+  end,
+  {noreply, State#state{report = NewReport}};
+
+handle_cast({tags, Tags, for, #scenario{featureId = FeatureId, id = ScenarioId}}, #state{report = Report} = State) ->
+  NewReport = case lists:keyfind(FeatureId, 2, Report) of
+    #feature{} = Feature ->
+      NewScenario = case lists:keyfind(ScenarioId, 4, Feature#feature.scenarios) of
+        #scenario{} = Scenario ->
+          Scenario#scenario{
+            tags = Scenario#scenario.tags ++ Tags
+          }
+      end,
+      lists:keyreplace(FeatureId, 2, Report, Feature#feature{
+        scenarios = lists:keyreplace(ScenarioId, 4, Feature#feature.scenarios, NewScenario)
+      })
+  end,
   {noreply, State#state{report = NewReport}}.
 
 handle_info(_Info, _State) ->
@@ -134,47 +151,48 @@ put(Id, Pos, Item, List) ->
 feature(#feature{} = Feature) -> #{
   uri => str(Feature#feature.path),
   keyword => ?FEATURE,
-  id => str(Feature#feature.id),
+  id => id(Feature#feature.id),
   name => str(Feature#feature.name),
   line => str(Feature#feature.line),
   description => str(Feature#feature.desc),
-  tags => lists:map(fun tag/1, Feature#feature.tags),
-  elements => lists:map(fun scenario/1, lists:reverse(Feature#feature.scenarios))
+  tags => lists:map(fun(Tag) -> tag(Tag, Feature#feature.line - 1) end, Feature#feature.tags),
+  elements => lists:flatmap(fun scenario/1, lists:reverse(Feature#feature.scenarios))
 }.
 
-scenario(#scenario{type = scenario} = Scenario) -> #{
+scenario(#scenario{type = scenario} = Scenario) -> [#{
   keyword => keyword(Scenario),
-  id => str(Scenario#scenario.id),
+  id => id(Scenario#scenario.id),
   name => str(Scenario#scenario.name),
   line => str(Scenario#scenario.line),
   description => str(Scenario#scenario.desc),
-  tags => lists:map(fun tag/1, Scenario#scenario.tags),
+  tags => lists:map(fun(Tag) -> tag(Tag, Scenario#scenario.line - 1) end, Scenario#scenario.tags),
   type => type(Scenario),
   steps => lists:map(fun step/1, lists:reverse(Scenario#scenario.actions))
-};
+}];
 
 scenario(#scenario{type = scenario_out} = Scenario) ->
   Actions = lists:reverse(Scenario#scenario.actions),
-  lists:map(fun({Index, Example}) ->
-    scenario(Scenario#scenario {
+  lists:flatmap(fun(Index) ->
+    Length = trunc(length(Actions) / length(tl(Scenario#scenario.examples))),
+    scenario(Scenario#scenario{
       type = scenario,
-      actions = lists:reverse(lists:sublist(Actions, length(Example) * Index +1, length(Example)))
+      id = io_lib:format("~s:~p", [Scenario#scenario.id, Index + 1]),
+      actions = lists:reverse(lists:sublist(Actions, Length * (Index + 1), Length))
     })
-  end, lists:zip(lists:seq(0, length(Scenario#scenario.examples)-2), tl(Scenario#scenario.examples))).
+  end, lists:seq(0, length(Scenario#scenario.examples) - 2)).
 
-step(#action{} = Step) -> #{
+step(#action{} = Step) -> maps:merge(#{
   keyword => keyword(Step),
   name => str(Step#action.desc),
   line => str(Step#action.line),
   match => #{
-    location => str(Step#action.location)
+    location => str(io_lib:format("~s:~p", [Step#action.location, Step#action.line]))
   },
-  result => result(Step)
-}.
+  result => result(Step)}, rows(Step#action.table)).
 
-tag(Tag) -> #{
-  name => str(Tag),
-  line => null
+tag(Tag, Line) -> #{
+  name => str("@" ++ Tag),
+  line => str(Line)
 }.
 
 keyword(#action{step = Step}) ->
@@ -190,6 +208,14 @@ keyword(#scenario{type = Type}) ->
     scenario -> str("Scenario");
     scenario_out -> str("Scenario Outline")
   end.
+
+rows(Table) when is_list(Table) -> #{
+  rows => lists:map(fun cell/1, Table)
+}.
+
+cell(Cells) -> #{
+  cells => lists:map(fun str/1, Cells)
+}.
 
 type(#scenario{type = Type}) ->
   case Type of
@@ -208,8 +234,11 @@ result(#action{error = Error, status = Status}) -> #{
   duration => 1
 }.
 
+id(Name) ->
+  str(re:replace(Name, "", "-", [global, {return, list}])).
+
 str(Str) when is_list(Str) ->
   list_to_bitstring(Str);
 
 str(Any) ->
-  Any.
+  list_to_bitstring(lists:flatten(io_lib:format("~p", [Any]))).

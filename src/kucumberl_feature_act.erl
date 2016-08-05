@@ -15,7 +15,8 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created : 11 Nov 2012 by Roberto Majadas <roberto.majadas@openshine.com>
+%%% Created  : 11 Nov 2012 by Roberto Majadas <roberto.majadas@openshine.com>
+%%% Modified :  4 Aug 2016 by Anton Panasenko <anton.panasenko@gmail.com>
 %%%-------------------------------------------------------------------
 -module(kucumberl_feature_act).
 -include("kucumberl.hrl").
@@ -28,36 +29,36 @@
 %%%===================================================================
 
 run(F, {setup, ScnID, EID}) ->
-    State = case F#feature.fcode#feature_code.setup_mod of
-		[] -> [];
-		{Mod, 0} -> Mod:setup()
-	    end,
+  State = case F#feature.fcode#feature_code.setup_mod of
+    [] -> [];
+    {Mod, 0} -> Mod:setup()
+  end,
 
-    ets:insert(kctx, {{F#feature.id, state, ScnID, EID}, State}),
-    ets:insert(kctx, {{F#feature.id, status, ScnID, EID}, ok}),
-    ets:insert(kctx, {{F#feature.id, setup, ScnID, EID}, ok}),
-    F;
+  ets:insert(kctx, {{F#feature.id, state, ScnID, EID}, State}),
+  ets:insert(kctx, {{F#feature.id, status, ScnID, EID}, ok}),
+  ets:insert(kctx, {{F#feature.id, setup, ScnID, EID}, ok}),
+  F;
 run(F, {teardown, ScnID, EID}) ->
-		[[OldState]] = ets:match(kctx, {{F#feature.id, state, ScnID, EID}, '$1'}),
-    State = case F#feature.fcode#feature_code.teardown_mod of
-		[] -> ok;
-		{Mod, 0} -> Mod:teardown();
-		{Mod, 1} -> Mod:teardown(OldState)
-	    end,
-    ets:insert(kctx, {{F#feature.id, state,    ScnID, EID}, State}),
-    ets:insert(kctx, {{F#feature.id, teardown, ScnID, EID}, ok}),
-    F;
+  [[OldState]] = ets:match(kctx, {{F#feature.id, state, ScnID, EID}, '$1'}),
+  State = case F#feature.fcode#feature_code.teardown_mod of
+    [] -> ok;
+    {Mod, 0} -> Mod:teardown();
+    {Mod, 1} -> Mod:teardown(OldState)
+  end,
+  ets:insert(kctx, {{F#feature.id, state, ScnID, EID}, State}),
+  ets:insert(kctx, {{F#feature.id, teardown, ScnID, EID}, ok}),
+  F;
 run(F, {background, ScnID, EID, ActID}) ->
-    kucumberl_log:emit(init_step, {background, ScnID, EID, ActID}),
-		NewAct = run_step(F, {background, ScnID, EID, ActID}),
-    kucumberl_log:emit(end_step, {background, ScnID, EID, ActID}),
-		NewAct;
+  kucumberl_log:emit(init_step, {background, ScnID, EID, ActID}),
+  NewAct = run_step(F, {background, ScnID, EID, ActID}),
+  kucumberl_log:emit(end_step, {background, ScnID, EID, ActID}),
+  NewAct;
 run(F, {normal, ScnID, EID, ActID}) ->
-    kucumberl_log:emit(init_step, {normal, ScnID, EID, ActID}),
-    NewAct = run_step(F, {normal, ScnID, EID, ActID}),
-    kucumberl_log:emit(end_step, {normal, ScnID, EID, ActID}),
-		NewAct;
-run(F,_) -> F.
+  kucumberl_log:emit(init_step, {normal, ScnID, EID, ActID}),
+  NewAct = run_step(F, {normal, ScnID, EID, ActID}),
+  kucumberl_log:emit(end_step, {normal, ScnID, EID, ActID}),
+  NewAct;
+run(F, _) -> F.
 
 
 %%%===================================================================
@@ -65,140 +66,140 @@ run(F,_) -> F.
 %%%===================================================================
 
 run_step(F, {ScnType, ScnID, EID, ActID}) ->
-    [[Status]] = ets:match(kctx, {{F#feature.id, status, ScnID, EID}, '$1'}),
-    [[State]] = ets:match(kctx, {{F#feature.id, state, ScnID, EID}, '$1'}),
+  [[Status]] = ets:match(kctx, {{F#feature.id, status, ScnID, EID}, '$1'}),
+  [[State]] = ets:match(kctx, {{F#feature.id, state, ScnID, EID}, '$1'}),
 
-    Act = case ScnType of
-	      background ->
-		  lists:nth(ActID,
-			    F#feature.background#scenario.actions);
-	      normal ->
-		  Scn = lists:nth(ScnID, F#feature.scenarios),
-		  lists:nth(ActID, Scn#scenario.actions)
-	  end,
-    Step = case Act#action.step of
-	       and_step ->
-		   [[LastStep]] = ets:match(kctx, {{F#feature.id, step, ScnID, EID}, '$1'}),
-		   LastStep;
-	       S ->
-		   ets:insert(kctx, {{F#feature.id, step, ScnID, EID}, S}),
-		   S
-	   end,
+  Act = case ScnType of
+    background ->
+      lists:nth(ActID,
+        F#feature.background#scenario.actions);
+    normal ->
+      Scn = lists:nth(ScnID, F#feature.scenarios),
+      lists:nth(ActID, Scn#scenario.actions)
+  end,
+  Step = case Act#action.step of
+    and_step ->
+      [[LastStep]] = ets:match(kctx, {{F#feature.id, step, ScnID, EID}, '$1'}),
+      LastStep;
+    S ->
+      ets:insert(kctx, {{F#feature.id, step, ScnID, EID}, S}),
+      S
+  end,
 
-		NewAct = prepare_act(F, ScnID, EID, Act),
+  NewAct = prepare_act(F, ScnID, EID, Act),
 
-    case find_step_handlers(F, ScnID, EID, Step, NewAct) of
-	[] ->
-	    %%io:format("F: ~p Scn: ~p E: ~p T: ~p Act: ~p NO HANDLERS~n", [F#feature.id, ScnID, EID, ScnType, ActID]),
-	    ets:insert(kctx, {{F#feature.id, status, ScnID, EID}, disabled}),
-	    ets:insert(kctx, {{F#feature.id, ScnType, ScnID, EID, ActID}, not_implementated});
-	[StepImpl|_] ->
-	    case Status of
-		ok ->
-		    {Mod, Re} = StepImpl,
-		    Params = prepare_step_params(F, ScnID, EID, Act, Re),
-		    case exec_step(Step, Mod, Re, State, Params) of
-			{ok, NewState} ->
-			    %%io:format("F: ~p Scn: ~p E: ~p T: ~p Act: ~p OK~n", [F#feature.id, ScnID, EID, ScnType, ActID]),
-			    ets:insert(kctx, {{F#feature.id, status, ScnID, EID}, ok}),
-			    ets:insert(kctx, {{F#feature.id, state,  ScnID, EID}, NewState}),
-			    ets:insert(kctx, {{F#feature.id, ScnType, ScnID, EID, ActID}, ok});
-			{failed, Reason} ->
-			    %%io:format("F: ~p Scn: ~p E: ~p T: ~p Act: ~p Fail~n", [F#feature.id, ScnID, EID, ScnType, ActID]),
-			    ets:insert(kctx, {{F#feature.id, status, ScnID, EID}, failed}),
-			    ets:insert(kctx, {{F#feature.id, ScnType, ScnID, EID, ActID}, {failed, Reason}});
-			_ ->
-			    %%io:format("F: ~p Scn: ~p E: ~p T: ~p Act: ~p Fail~n", [F#feature.id, ScnID, EID, ScnType, ActID]),
-			    ets:insert(kctx, {{F#feature.id, status, ScnID, EID}, failed}),
-			    ets:insert(kctx, {{F#feature.id, ScnType, ScnID, EID, ActID},
-					      {failed, "Wrong value returned"}})
-		    end;
-		_ ->
-		    %%io:format("F: ~p Scn: ~p E: ~p T: ~p Act: ~p Disabled~n", [F#feature.id, ScnID, EID, ScnType, ActID]),
-		    ets:insert(kctx, {{F#feature.id, ScnType, ScnID, EID, ActID}, disabled})
-	    end
-    end,
+  case find_step_handlers(F, ScnID, EID, Step, NewAct) of
+    [] ->
+      %%io:format("F: ~p Scn: ~p E: ~p T: ~p Act: ~p NO HANDLERS~n", [F#feature.id, ScnID, EID, ScnType, ActID]),
+      ets:insert(kctx, {{F#feature.id, status, ScnID, EID}, disabled}),
+      ets:insert(kctx, {{F#feature.id, ScnType, ScnID, EID, ActID}, not_implementated});
+    [StepImpl | _] ->
+      case Status of
+        ok ->
+          {Mod, Re} = StepImpl,
+          Params = prepare_step_params(F, ScnID, EID, Act, Re),
+          case exec_step(Step, Mod, Re, State, Params) of
+            {ok, NewState} ->
+              %%io:format("F: ~p Scn: ~p E: ~p T: ~p Act: ~p OK~n", [F#feature.id, ScnID, EID, ScnType, ActID]),
+              ets:insert(kctx, {{F#feature.id, status, ScnID, EID}, ok}),
+              ets:insert(kctx, {{F#feature.id, state, ScnID, EID}, NewState}),
+              ets:insert(kctx, {{F#feature.id, ScnType, ScnID, EID, ActID}, ok});
+            {failed, Reason} ->
+              %%io:format("F: ~p Scn: ~p E: ~p T: ~p Act: ~p Fail~n", [F#feature.id, ScnID, EID, ScnType, ActID]),
+              ets:insert(kctx, {{F#feature.id, status, ScnID, EID}, failed}),
+              ets:insert(kctx, {{F#feature.id, ScnType, ScnID, EID, ActID}, {failed, Reason}});
+            _ ->
+              %%io:format("F: ~p Scn: ~p E: ~p T: ~p Act: ~p Fail~n", [F#feature.id, ScnID, EID, ScnType, ActID]),
+              ets:insert(kctx, {{F#feature.id, status, ScnID, EID}, failed}),
+              ets:insert(kctx, {{F#feature.id, ScnType, ScnID, EID, ActID},
+                {failed, "Wrong value returned"}})
+          end;
+        _ ->
+          %%io:format("F: ~p Scn: ~p E: ~p T: ~p Act: ~p Disabled~n", [F#feature.id, ScnID, EID, ScnType, ActID]),
+          ets:insert(kctx, {{F#feature.id, ScnType, ScnID, EID, ActID}, disabled})
+      end
+  end,
 
-    NewAct.
+  NewAct.
 
 find_step_handlers(F, ScnID, EID, Step, Act) ->
-    PAct = prepare_act(F, ScnID, EID, Act),
+  PAct = prepare_act(F, ScnID, EID, Act),
 
-    lists:foldl(
-      fun ({Sx, Mod, Re}, Acc) ->
-	      case Sx =:= Step of
-		  false -> Acc;
-		  true ->
-		      case re:run(PAct#action.desc, Re) of
-			  {match, _} -> Acc ++ [{Mod, Re}] ;
-			  _ -> Acc
-		      end
-	      end
-      end,
-      [],
-      F#feature.fcode#feature_code.steps).
+  lists:foldl(
+    fun({Sx, Mod, Re}, Acc) ->
+      case Sx =:= Step of
+        false -> Acc;
+        true ->
+          case re:run(PAct#action.desc, Re) of
+            {match, _} -> Acc ++ [{Mod, Re}];
+            _ -> Acc
+          end
+      end
+    end,
+    [],
+    F#feature.fcode#feature_code.steps).
 
 exec_step(Step, Mod, Re, State, Params) ->
-    ExecFunc =
-	fun () ->
-		case Step of
-		    given_step -> Mod:given(Re, State, Params);
-		    when_step  -> Mod:'when'(Re, State, Params);
-		    then_step  -> Mod:then(Re, State, Params)
-		end
-	end,
+  ExecFunc =
+    fun() ->
+      case Step of
+        given_step -> Mod:given(Re, State, Params);
+        when_step -> Mod:'when'(Re, State, Params);
+        then_step -> Mod:then(Re, State, Params)
+      end
+    end,
 
-    try ExecFunc() of
-	Val -> Val
-    catch
-	E -> {failed, E}
-    end.
+  try ExecFunc() of
+    Val -> Val
+  catch
+    E -> {failed, E}
+  end.
 
 prepare_step_params(F, ScnID, EID, Act, Re) ->
-    PAct = prepare_act(F, ScnID, EID, Act),
+  PAct = prepare_act(F, ScnID, EID, Act),
 
-    P1 = case re:run(PAct#action.desc, Re,
-		     [{capture, all_but_first, list}]) of
-	     {match, P} -> P;
-	     _ -> []
-	 end,
-    P2 = case PAct#action.text of
-	     "" -> P1;
-	     Text -> P1 ++ [Text]
-	 end,
-    case PAct#action.table of
-	[] -> P2;
-	Table -> P2 ++ [Table]
-    end.
+  P1 = case re:run(PAct#action.desc, Re,
+    [{capture, all_but_first, list}]) of
+    {match, P} -> P;
+    _ -> []
+  end,
+  P2 = case PAct#action.text of
+    "" -> P1;
+    Text -> P1 ++ [Text]
+  end,
+  case PAct#action.table of
+    [] -> P2;
+    Table -> P2 ++ [Table]
+  end.
 
 prepare_act(F, ScnID, EID, Act) ->
-    Scn = lists:nth(ScnID, F#feature.scenarios),
-    case Scn#scenario.examples of
-	       [] -> Act;
-	       _ ->
-		   HRow = lists:nth(1, Scn#scenario.examples),
-		   ERow = lists:nth(EID + 1, Scn#scenario.examples),
-		   try lists:zip(HRow, ERow) of
-		       E ->
-			   lists:foldl(
-			     fun ({K,V}, A) ->
-             NewText = re:replace(A#action.text,
-               "<" ++ K ++ ">",
-               V,
-               [{return, list}]),
-             NewTable = lists:map(fun(Elems) ->
-               lists:map(fun(Elem) -> re:replace(Elem, "<" ++ K ++ ">", V, [{return, list}]) end, Elems)
-             end, A#action.table),
-             NewDesc = re:replace(A#action.desc,
-               "<" ++ K ++ ">",
-               V,
-               [{return, list}]),
-             A#action{desc = NewDesc, text = NewText, table = NewTable}
-			     end, Act, E)
-		   catch
-		       _ -> Act
-		   end
-	   end.
+  Scn = lists:nth(ScnID, F#feature.scenarios),
+  case Scn#scenario.examples of
+    [] -> Act;
+    _ ->
+      HRow = lists:nth(1, Scn#scenario.examples),
+      ERow = lists:nth(EID + 1, Scn#scenario.examples),
+      try lists:zip(HRow, ERow) of
+        E ->
+          lists:foldl(
+            fun({K, V}, A) ->
+              NewText = re:replace(A#action.text,
+                "<" ++ K ++ ">",
+                V,
+                [{return, list}]),
+              NewTable = lists:map(fun(Elems) ->
+                lists:map(fun(Elem) -> re:replace(Elem, "<" ++ K ++ ">", V, [{return, list}]) end, Elems)
+              end, A#action.table),
+              NewDesc = re:replace(A#action.desc,
+                "<" ++ K ++ ">",
+                V,
+                [{return, list}]),
+              A#action{desc = NewDesc, text = NewText, table = NewTable}
+            end, Act, E)
+      catch
+        _ -> Act
+      end
+  end.
 
 %%%===================================================================
 %%% Util functions

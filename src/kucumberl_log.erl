@@ -15,7 +15,8 @@
 %%% @doc
 %%%
 %%% @end
-%%% Created : 19 Nov 2012 by Roberto Majadas <roberto.majadas@openshine.com>
+%%% Created  : 19 Nov 2012 by Roberto Majadas <roberto.majadas@openshine.com>
+%%% Modified :  4 Aug 2016 by Anton Panasenko <anton.panasenko@gmail.com>
 %%%-------------------------------------------------------------------
 -module(kucumberl_log).
 -include("kucumberl.hrl").
@@ -138,13 +139,13 @@ code_change(_OldVsn, State, _Extra) ->
 
 print_feature_name(State) ->
     F = State#state.feature,
-    io:format("Feature: ~s~n", [F#feature.desc]).
+    io:format("Feature: ~s~n", [F#feature.name]).
 
 print_scenario_name(State) ->
     F = State#state.feature,
     Scn = lists:nth(State#state.scnid,
 		    F#feature.scenarios),
-    io:format("  Scenario: ~s~n", [Scn#scenario.desc]).
+    io:format("  Scenario: ~s~n", [Scn#scenario.name]).
 
 print_event(State, init_step, {Type, ScnID, EID, ActID}) ->
     F = State#state.feature,
